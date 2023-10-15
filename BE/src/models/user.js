@@ -14,12 +14,14 @@ module.exports = (sequelize, DataTypes) => {
     static associate(models) {
       // define association here
       User.belongsTo(models.Group, { foreignKey: 'groupId' });
+      // User.hasMany(models.Project, { foreignKey: 'customerId' });
+      User.belongsToMany(models.Role, { through: 'Project_User', foreignKey: 'projectId', otherKey: 'userId' });
     }
   }
   User.init({
-    firstName: DataTypes.STRING,
-    lastName: DataTypes.STRING,
     email: DataTypes.STRING,
+    password: DataTypes.STRING,
+    userName: DataTypes.STRING,
     groupId: DataTypes.STRING
   }, {
     sequelize,
