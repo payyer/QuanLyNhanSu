@@ -1,54 +1,89 @@
-const { where } = require('sequelize');
 const models = require('../models/index');
 const bcrypt = require('bcrypt');
+
 const getAllUser = async (req, res) => {
     try {
-        const allUser = await models.User.findAll({ include: models.Group });
-        return res.json({ allUser });
+
+        let { page, limit } = req.query;
+        let offset = (page - 1) * limit;
+        const { count, rows } = await models.User.findAndCountAll({
+            offset: offset,
+            limit: limit,
+            include: models.Group,
+            attributes: ["id", "email", "userName"]
+        });
+
+        let totalPages = Math.ceil(count / limit)
+
+        let data = {
+            totalRows: count,
+            totalPages: totalPages,
+            users: rows
+        }
+
+        return res.status(200).json({ EC: '0', message: "Tìm kiểm thành công", data });
     }
     catch (err) {
         console.log(err);
-        return res.json({ err });
+        return res.status(500).json({ EC: '-1', message: "Something wrong!" });
     }
 }
 
 const createUser = async (req, res) => {
-    const { email, password, userName, groupId } = req.body;
+    const { email, password, password2, userName, groupId } = req.body;
     try {
         if (!email) {
-            return res.status(400).json({ err: "Bạn chưa nhập Email" });
+            return res.status(200).json({ EC: '1', message: "Bạn chưa nhập Email" });
         }
         if (!password) {
-            return res.status(400).json({ err: "Bạn chưa nhập Password" });
+            return res.status(200).json({ EC: '1', message: "Bạn chưa nhập Password" });
+        }
+        if (password && password.length < 6) {
+            return res.status(200).json({ EC: '1', message: "Password cần có ít nhất 6 ký tự" });
+        }
+        if (!password2) {
+            return res.status(200).json({ EC: '1', message: "Bạn chưa xác nhận lại password" });
+        }
+        if (password2 !== password) {
+            return res.status(200).json({ EC: '1', message: "Mật khẩu xác nhận không trùng khớp" });
         }
         if (!userName) {
-            return res.status(400).json({ err: "Bạn chưa nhập User Name" });
+            return res.status(200).json({ EC: '1', message: "Bạn chưa nhập User Name" });
         }
-        const salt = bcrypt.genSaltSync();
-        const hashingPassword = bcrypt.hashSync(password, salt);
-        const newUser = await models.User.create({ email, password: hashingPassword, userName, groupId });
-        return res.status(200).json({ message: 'Tạo mới user thành công!', newUser });
+
+        const userIsExist = await models.User.findOne({ where: { email } });
+        if (!userIsExist) {
+            const salt = bcrypt.genSaltSync();
+            const hashingPassword = bcrypt.hashSync(password, salt);
+            const newUser = await models.User.create({ email, password: hashingPassword, userName, groupId });
+            return res.status(200).json({ EC: '0', message: 'Tạo mới user thành công!', data: newUser });
+        } else {
+            return res.status(200).json({ EC: '1', message: 'Email đã tồn tại' });
+        }
     }
     catch (err) {
-        res.json({ err });
+        return res.json({
+            EM: err,
+            EC: '-1',
+            DT: ''
+        });
     }
 }
 
 const changeGroupUser = async (req, res) => {
     let { id } = req.params;
     let { changeGroup } = req.body;
-    console.log(changeGroup);
     try {
         if (!id) {
-            return res.satus(400).json({ meeasge: "You don't select id" });
+            return res.satus(200).json({ EC: '1', meeasge: "You don't select id" });
         }
         const user = await models.User.findOne({ id });
         const updateUser = await user.update({ groupId: changeGroup })
-        res.json({ updateUser });
+        res.status(200).json({ EC: '0', data: updateUser });
     }
     catch (err) {
         console.log(err);
-        res.satus(400).json({ err });
+        res.satus(500).json({ EC: '1-', err });
     }
 }
 
@@ -58,19 +93,46 @@ const deleteUser = async (req, res) => {
         const user = await models.User.findOne({ where: { id } });
         if (user) {
             const deleteUser = await user.destroy();
-            return res.status(200).json({ message: 'Xóa người dùng thành công!', deleteUser });
+            return res.status(200).json({ EC: '0', message: 'Xóa người dùng thành công!', data: deleteUser });
         } else {
-            return res.status(404).json({ message: 'Không tìm thấy người dùng' });
+            return res.status(404).json({ EC: '1', message: 'Không tìm thấy người dùng' });
         }
 
     }
     catch (err) {
         console.log(err);
-        res.status(400).json({ meeasge: 'Xóa người dùng thất bại', err })
+        res.status(500).json({ EC: '1', meeasge: 'Xóa người dùng thất bại', err })
     }
 
 }
 
+const loginUser = async (req, res) => {
+    const { email, password } = req.body;
+    try {
+        if (!email) {
+            return res.status(200).json({ EC: '1', message: "Bạn chưa nhập Email" });
+        }
+        if (!password) {
+            return res.status(200).json({ EC: '1', message: "Bạn chưa nhập Password" });
+        }
+        const user = await models.User.findOne({ where: { email } });
+        if (!user) {
+            return res.status(200).json({ EC: '1', message: "Không tìm thấy người dùng" });
+        }
+        const userPassword = user.password;
+        const isUser = await bcrypt.compareSync(password, userPassword);
+        if (isUser) {
+            return res.status(200).json({ EC: 0, message: "Đăng nhập thành công", data: user });
+        } else {
+            return res.status(200).json({ EC: 1, message: "Mật khẩu không chính xác" });
+        }
+    }
+    catch (err) {
+        console.log(err);
+        return res.status(400).json({ EC: -1, message: "Something Wrong!" });
+    }
+}
+
 module.exports = {
-    getAllUser, createUser, changeGroupUser, deleteUser
+    getAllUser, createUser, changeGroupUser, deleteUser, loginUser
 }
